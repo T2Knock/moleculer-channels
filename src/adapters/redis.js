@@ -590,14 +590,26 @@ class RedisAdapter extends BaseAdapter {
 
 			if (result.status == "fulfilled") {
 				// Send ACK message
-				// https://redis.io/commands/xack
 				// Use pubClient to ensure that ACK is delivered to redis
+				// https://redis.io/commands/xack
 				await pubClient.xack(chan.name, chan.group, id);
-				this.logger.debug(`Message is ACKed.`, {
-					id,
-					name: chan.name,
-					group: chan.group
-				});
+
+				// Delete the message if removeOnAck is enabled
+				const shouldRemove = _.get(chan, "redis.removeOnAck", false);
+				if (shouldRemove) {
+					await pubClient.xdel(chan.name, id);
+					this.logger.debug(`Message is ACKed and removed.`, {
+						id,
+						name: chan.name,
+						group: chan.group
+					});
+				} else {
+					this.logger.debug(`Message is ACKed.`, {
+						id,
+						name: chan.name,
+						group: chan.group
+					});
+				}
 			} else {
 				this.metricsIncrement(C.METRIC_CHANNELS_MESSAGES_ERRORS_TOTAL, chan);
 
@@ -617,6 +629,10 @@ class RedisAdapter extends BaseAdapter {
 						this.logger.error(`Drop message...`, id);
 					}
 					await pubClient.xack(chan.name, chan.group, id);
+					const shouldRemove = _.get(chan, "redis.removeOnAck", false);
+					if (shouldRemove) {
+						await pubClient.xdel(chan.name, id);
+					}
 				} else {
 					// It will be (eventually) picked by xclaim
 				}
