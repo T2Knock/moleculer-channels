@@ -32,6 +32,7 @@ let Redis;
  * @property {Number} claimInterval Interval (in milliseconds) between message claims
  * @property {String} startID Starting point when consumers fetch data from the consumer group. By default equals to "$", i.e., consumers will only see new elements arriving in the stream.
  * @property {Number} processingAttemptsInterval Interval (in milliseconds) between message transfer into FAILED_MESSAGES channel
+ * @property {Boolean} removeOnAck Delete the message on acknowledge
  */
 
 /**
@@ -94,7 +95,9 @@ class RedisAdapter extends BaseAdapter {
 					// https://redis.io/commands/XGROUP
 					startID: "$",
 					// Interval (in milliseconds) between message transfer into FAILED_MESSAGES channel
-					processingAttemptsInterval: 1000
+					processingAttemptsInterval: 1000,
+					// Remove on acknowledge
+					removeOnAck: false
 				}
 			}
 		});
@@ -440,6 +443,10 @@ class RedisAdapter extends BaseAdapter {
 						await nackedClient.xack(chan.name, chan.group, ids);
 
 						this.removeChannelActiveMessages(chan.id, ids);
+						const shouldRemove = _.get(this.opts, "redis.consumerOptions.removeOnAck");
+						if (shouldRemove) {
+							await nackedClient.xdel(chan.name, ids);
+						}
 					}
 				} catch (error) {
 					this.logger.error(
